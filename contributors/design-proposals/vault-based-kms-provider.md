@@ -29,7 +29,7 @@ Note, that the Vault Provider in this proposal
 This proposal assumes familiarity with Vault and the transit back-end.
 
 ## High level design
-As with existing providers, the Vault based provider will implement the interface ``KMSService``. Based on value of *kind* in the KMS provider configuration, the ``KMSTransformer`` module will use an instance of the Vault provider for decryption and encryption of DEK before storing and after reading from the storage.
+As with existing providers, the Vault based provider will implement the interface ``envelope.Service``. Based on value of *name* in the KMS provider configuration, the ``EnvelopeTransformer`` module will use an instance of the Vault provider for decryption and encryption of DEK before storing and after reading from the storage.
 
 The KEK will be stored and managed in Vault backend. The Vault based provider configured in KMS Transformer configuration will make REST requests to encrypt and decrypt DEKs over a secure channel, if TLS is enabled. KMS Transformer will store the DEKs in etcd in encrypted form along with encrypted secrets. As with existing providers, encrypted DEKs will be stored with metadata used to identify the provider and KEK to be used for decryption.
 
@@ -44,41 +44,46 @@ The provider will work with vault REST APIs and will not require Vault to be con
 
 ### Diagram illustrating interfaces and implementations
 
-![Image of interfaces](pseudoclassdiagram.png)
+![Image of interfaces](vault-based-kms-class-diagram.png)
 
 ### Pseudocode
 #### Prefix Metadata
-Every encrypted DEK will have the following metadata prefixed. 
-``vault:<api-version>:<key-name>:<key-version>``
+Every encrypted secret will have the following metadata prefixed. 
+``k8s:enc:kms:<api-version>:vault:len(<KEK-key-name>:<KEK-key-version>:<DEK encrypted with KEK>):<KEK-key-name>:<KEK-key-version>:<DEK encrypted with KEK>``
 
-* ``vault`` represents the KMS service *kind* value. It is a fixed value for Vault based provider.
 * ``<api-version>`` represents api version in the providers configuration file.
-* ``key-name`` is determined from the vault service configuration in providers configuration file
-* ``key-version`` is an internal identifier used by vault to identify specific key version used to encrypt and decrypt. Vault sends ``key-version`` prefixed with encrypted data in the response to an encrypt request. The ``key-version`` will be stored as part of prefix and returned back to Vault during a decrypt request.
+* ``vault`` represents the KMS service *kind* value. It is a fixed value for Vault based provider.
+* ``KEK-key-name`` is determined from the vault service configuration in providers configuration file
+* ``KEK-key-version`` is an internal identifier used by vault to identify specific key version used to encrypt and decrypt. Vault sends ``kek-key-version`` prefixed with encrypted data in the response to an encrypt request. The ``kek-key-version`` will be stored as part of prefix and returned back to Vault during a decrypt request.
+
+Of the above metadata, 
+
+* ``EnvelopeTransformer`` will add ``k8s:enc:kms:<api-version>:vault:len(<KEK-key-name>:<KEK-key-version>:<DEK encrypted with KEK>)``
+* while the ``vaultEnvelopeService`` will add ``<KEK-key-name>:<KEK-key-version>:<DEK encrypted with KEK>``. 
+
 
 #### For each write of DEK
-KMS transformer will write encrypted DEK along with encrypted secret in etcd.
-Here's the pseudocode for each write of DEK. 
+``EnvelopeTransformer`` will write encrypted DEK along with encrypted secret in etcd.
 
-    API_VERSION = <api version from providers configuration file>
+Here's the pseudocode for ``vaultEnvelopeService.encrypt()``, invoked on each write of DEK. 
+
     KEY_NAME = <first key-name from vault provider config>
-
     PLAIN_DEK = <value of DEK>
-
-    ENCRYPTED_DEK_WITH_KEY_VERSION = encrypt(base64(PLAIN_DEK), KEY_NAME)
- 
+    ENCRYPTED_DEK_WITH_KEY_VERSION  = encrypt(base64(PLAIN_DEK), KEY_NAME) 
+   
     // output from vault will have an extra prefix "vault" (other than key version) which will be stripped.
 
-    STORED_DEK = vault:<api-version>:KEY_NAME:<ENCRYPTED_DEK_WITH_KEY_VERSION>
+    STORED_DEK = KEY_NAME:<ENCRYPTED_DEK_WITH_KEY_VERSION>
     
 #### For each read of DEK
-KMS transformer will read encrypted DEK along with encrypted secret from etcd
-Here's the pseudocode for each read of DEK. 
+``EnvelopeTransformer`` will read encrypted DEK along with encrypted secret from etcd
 
-	// parse the provider kind, key name and encrypted DEK prefixed with key 
-	//version
+Here's the pseudocode ``vaultEnvelopeService.decrypt()`` invoked on each read of DEK. 
+
+	// parse the provider kind, key name and encrypted DEK prefixed with key version
 	KEY_NAME = //key-name from the prefix
 	ENCRYPTED_DEK_WITH_KEY_VERSION = //<key version>:<encrypted DEK> from the stored value
+	
 	 // add "vault" prefix to ENCRYPTED_DEK_WITH_KEY_VERSION as required by vault decrypt API
 	
 	base64Encoded = decrypt(vault:ENCRYPTED_DEK_WITH_KEY_VERSION, KEY_NAME)
@@ -99,9 +104,24 @@ Here's the pseudocode for each read of DEK.
 
 No new configuration file or startup parameter will be introduced.
 
-The following configuration elements will be stored in the existing configuration file used to configure any of the encryption providers. The location of this configuration file  is identified by the existing startup parameter: `--experimental-encryption-provider-config` .
+The vault provider will be specified in the existing configuration file used to configure any of the encryption providers. The location of this configuration file  is identified by the existing startup parameter: `--experimental-encryption-provider-config` .
 
-Vault provider configuration will be identified by value "**vault**" of ``kind`` attribute in ``kms`` provider.
+Vault provider configuration will be identified by value "**vault**" for the ``name`` attribute in ``kms`` provider.
+
+The actual configuration of the vault provider will be in a separate configuration identified by the ``configfile`` attribute in the KMS provider. 
+
+Here is a sample configuration file with the vault provider configured: 
+
+	kind: EncryptionConfig
+	apiVersion: v1
+	resources:
+	  - resources:
+	    - secrets
+	    providers:
+	    - kms:
+	      name: vault
+	      cachesize: 10
+	      configfile: /home/myvault/vault-config.yaml
 
 #### Minimal required Configuration
 The Vault based Provider needs the following configuration elements, at a minimum:
@@ -111,7 +131,7 @@ The Vault based Provider needs the following configuration elements, at a minimu
 
 Note :  key name does not need to be changed if key is rotated in Vault, the rotated key is identified by key version which is prefix to ciphertext.
 
-New key can be added in the list. Encryption will be done using the first key in the list. Decryption can happen using any of the keys in the list based on the prefix to the encrypted DEK stored in etcd
+A new key can be added in the list. Encryption will be done using the first key in the list. Decryption can happen using any of the keys in the list based on the prefix to the encrypted DEK stored in etcd
 
 #### Authentication Configuration
 ##### Vault Server Authentication
@@ -204,6 +224,9 @@ Note that when a key is rotated, Vault does not allow to choose a different encr
 ## Performance
 1. KMS provider framework uses LRU cache to minimize the requests to KMS for encryption and decryption of DEKs. 
 2. Note that there will be a request to KMS for every cache miss causing a performance impact. Hence, depending on the cache size, there will be a performance impact. 
-3. Response time.  
+3. Response time. 
+    4.  will depend on choice of encryption algorithm and strength. 
+    5. will depend on specific vault configurations like storage backend, authentication mechanism, token polices etc.
+
 
 
