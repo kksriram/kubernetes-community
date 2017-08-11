@@ -79,6 +79,7 @@ Backend.
 ### Pseudocode
 #### Prefix Metadata
 Every encrypted secret will have the following metadata prefixed.
+
 ```json
 k8s:enc:kms:<api-version>:vault:len(<KEK-key-name>:<KEK-key-version>:<DEK
 encrypted with KEK>):<KEK-key-name>:<KEK-key-version>:<DEK encrypted with KEK>
