@@ -208,73 +208,43 @@ server  to vault server eg. ``/var/run/kubernetes/ssl/valut-client-cert.pem``
 2. ``client-key`` : location of x509 private key to authenticate kubernetes API
 server  to vault server eg. ``/var/run/kubernetes/ssl/vault-client-key.pem``
 
-Here's a sample configuration file with ``client-cert``:
-
-	kind: EncryptionConfig
-	apiVersion: v1
-	resources:
-	  - resources:
-		- secrets
-		providers:
-	 	- kms:
-	    	kind: vault
-	    	apiVersion: v1
-	    	cache-size: 100
-	    	config:
-	      	addr: https://localhost:8200
-	      	key-names:
-	            - kube-secret-enc-key
-	      	ca-cert:/var/run/kubernetes/ssl/vault.crt
-	      	client-cert:/var/run/kubernetes/ssl/vault-client-cert.pem
-	      	client-key:/var/run/kubernetes/ssl/vault-client-key.pem
+Here's a sample ``vault-config.yaml`` configuration with ``client-cert``:
+```
+	key-names:
+	  - kube-secret-enc-key
+	addr: https://example.com:8200
+	ca-cert:/var/run/kubernetes/ssl/vault.crt
+	client-cert:/var/run/kubernetes/ssl/vault-client-cert.pem
+	client-key:/var/run/kubernetes/ssl/vault-client-key.pem
+```
 
 ###### Vault token based authentication
 1. ``token`` : limited access vault token required by kubernetes API sever to
 authenticate itself while making requests to vault eg:
 8dad1053-4a4e-f359-2eab-d57968eb277f
 
-Here's a sample configuration file when using a Vault Token for authenticating
+Here's a sample ``vault-config.yaml`` configuration using a Vault Token for authenticating
 the Kubernetes cluster as a client to Vault:
-
-	kind: EncryptionConfig
-	apiVersion: v1
-	resources:
-	  - resources:
-		- secrets
-		providers:
-	 	- kms:
-	    		kind: vault
-	    		apiVersion: v1
-	    		cache-size: 100
-	    		config:
-	      		addr: https://localhost:8200
-	      		key-names:
-	           		- kube-secret-enc-key
-	      		ca-cert:/var/run/kubernetes/ssl/vault.crt
-	      		token: 8dad1053-4a4e-f359-2eab-d57968eb277f
+```
+  key-names:
+  	 -kube-secret-enc-key
+  addr: https://example.com:8200
+  ca-cert:/var/run/kubernetes/ssl/vault.crt
+  token: 8dad1053-4a4e-f359-2eab-d57968eb277f
+```
 
 ###### Vault AppRole based authentication
 1. ``role-id`` : RoleID of the AppRole
 2. ``secret-id`` : secret Id only if associated with the appRole.
 
 Here's a sample configuration file with Vault AppRole
-
-	kind: EncryptionConfig
-	apiVersion: v1
-	resources:
-	  - resources:
-		- secrets
-		providers:
-	     - kms:
-	    	kind: vault
-	    	apiVersion: v1
-	    	cache-size: 100
-	    	config:
-	      	addr: https://localhost:8200
-	      	key-names:
-	            - kube-secret-enc-key
-	      	ca-cert: /var/run/kubernetes/ssl/vault.crt
-	      	role-id: db02de05-fa39-4855-059b-67221c5c2f63
+```
+  key-names:
+    - kube-secret-enc-key
+  addr: https://localhost:8200
+  ca-cert: /var/run/kubernetes/ssl/vault.crt
+  role-id: db02de05-fa39-4855-059b-67221c5c2f63
+```
 
 ## Key Generation and rotation
 The KEK is generated in Vault and rotated using direct API call or CLI to Vault
