@@ -223,7 +223,7 @@ Here's a sample ``vault-config.yaml`` configuration with ``client-cert``:
 authenticate itself while making requests to vault eg:
 8dad1053-4a4e-f359-2eab-d57968eb277f
 
-Here's a sample ``vault-config.yaml`` configuration using a Vault Token for authenticating
+Here's a sample ``vault-config.yaml`` configuration using a Vault Token for authentication. 
 the Kubernetes cluster as a client to Vault:
 ```
   key-names:
@@ -237,7 +237,7 @@ the Kubernetes cluster as a client to Vault:
 1. ``role-id`` : RoleID of the AppRole
 2. ``secret-id`` : secret Id only if associated with the appRole.
 
-Here's a sample configuration file with Vault AppRole
+Here's a sample configuration file using a Vault AppRole for authentication.
 ```
   key-names:
     - kube-secret-enc-key
